@@ -1,0 +1,15 @@
+# Environnement virtuel
+venv/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+
+# Variables d'environnement
+.env
+
+# Fichiers VS Code
+.vscode/
+
+# Fichiers PyCharm
+.idea/
