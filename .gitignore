@@ -12,4 +12,7 @@ __pycache__/
 .vscode/
 
 # Fichiers PyCharm
-.idea/db.sqlite3 
+.idea/
+
+# Base de données locale
+db.sqlite3
