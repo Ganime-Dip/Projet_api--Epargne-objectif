@@ -126,7 +126,7 @@ curl -X POST http://127.0.0.1:8000/api/tirelires/ -H "Authorization: Token <toke
 ```
 Réponse attendue (400) :
 ```json
-{"erreur": "Le montant objectif doit etre positif."}
+{"erreur": "La date d'échéance doit être future."}
 ```
 
 ---
