@@ -16,8 +16,8 @@ python --version
 ## Installation
 
 ```bash
-git clone <url_du_depot>
-cd Projet_API
+git clone https://github.com/Ganime-Dip/Projet_api--Epargne-objectif.git
+cd Projet_api--Epargne-objectif
 python -m venv venv
 venv\Scripts\activate        # Windows
 # source venv/bin/activate   # Linux/Mac
