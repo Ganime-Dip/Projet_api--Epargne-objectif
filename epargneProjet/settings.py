@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework.authtoken',
+    'drf_spectacular',
     'tirelires',
 ]
 
@@ -131,5 +132,13 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'EXCEPTION_HANDLER': 'tirelires.exception_handlers.custom_exception_handler',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': "API Épargne à objectif",
+    'DESCRIPTION': "API REST de gestion de tirelires d'épargne (LICELI Technologies). ",
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }

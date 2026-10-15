@@ -28,3 +28,24 @@ class OperationSerializer(serializers.ModelSerializer):
 
 class DepotRetraitSerializer(serializers.Serializer):
     montant = serializers.DecimalField(max_digits=12, decimal_places=2)
+    
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(style={'input_type': 'password'})
+    
+
+class TokenSerializer(serializers.Serializer):
+    token = serializers.CharField()
+
+
+class SoldeSerializer(serializers.Serializer):
+    solde = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class ErreurSerializer(serializers.Serializer):
+    erreur = serializers.CharField()
+
+
+class DetailSerializer(serializers.Serializer):
+    detail = serializers.CharField()

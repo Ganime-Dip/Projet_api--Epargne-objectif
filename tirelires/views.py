@@ -1,4 +1,5 @@
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
@@ -10,10 +11,19 @@ from .exceptions import AccesRefuse, DonneesCreationInvalides, TirelireIntrouvab
 from .models import Tirelire
 from .serializers import (
     DepotRetraitSerializer,
+    DetailSerializer,
+    ErreurSerializer,
+    LoginSerializer,
     OperationSerializer,
+    SoldeSerializer,
     TirelireCreationSerializer,
     TirelireSerializer,
+    TokenSerializer,
 )
+
+R401 = OpenApiResponse(DetailSerializer, description="Token absent ou invalide.")
+R403 = OpenApiResponse(ErreurSerializer, description="La tirelire appartient à un autre client (RG4).")
+R404 = OpenApiResponse(ErreurSerializer, description="Tirelire introuvable.")
 
 
 def get_tirelire_for_client(client, pk):
@@ -29,6 +39,17 @@ def get_tirelire_for_client(client, pk):
     return tirelire
 
 class LoginView(ObtainAuthToken):
+    @extend_schema(
+        tags=['Authentification'],
+        summary='Connexion',
+        description="Vérifie les identifiants et retourne le token à utiliser dans l'en-tête `Authorization: Token <token>`.",
+        auth=[],
+        request=LoginSerializer,
+        responses={
+            200: OpenApiResponse(TokenSerializer, description='Connexion réussie.'),
+            400: OpenApiResponse(ErreurSerializer, description='Identifiants invalides.'),
+        },
+    )
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data, context={'request': request})
         if not serializer.is_valid():
@@ -41,11 +62,28 @@ class LoginView(ObtainAuthToken):
         return Response({'token': token.key})
     
 class TirelireListCreateView(APIView):
+    @extend_schema(
+        tags=['Tirelires'],
+        summary='Lister mes tirelires',
+        description='Retourne uniquement les tirelires du client connecté (RG4).',
+        responses={200: TirelireSerializer(many=True), 401: R401},
+    )
     def get(self, request):
         tirelires = request.user.client.tirelires.all()
         serializer = TirelireSerializer(tirelires, many=True)
         return Response(serializer.data)
 
+    @extend_schema(
+        tags=['Tirelires'],
+        summary='Créer une tirelire',
+        description='Crée une tirelire avec un solde initial nul.',
+        request=TirelireCreationSerializer,
+        responses={
+            201: OpenApiResponse(TirelireSerializer, description='Tirelire créée.'),
+            400: OpenApiResponse(ErreurSerializer, description="Montant objectif ≤ 0 (RG5) ou date d'échéance non future (RG6)."),
+            401: R401,
+        },
+    )
     def post(self, request):
         serializer = TirelireCreationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -68,12 +106,28 @@ class TirelireListCreateView(APIView):
 
 
 class TirelireDetailView(APIView):
+    @extend_schema(
+        tags=['Tirelires'],
+        summary="Consulter une tirelire",
+        responses={200: TirelireSerializer, 401: R401, 403: R403, 404: R404},
+    )
     def get(self, request, pk):
         tirelire = get_tirelire_for_client(request.user.client, pk)
         return Response(TirelireSerializer(tirelire).data)
 
 
 class DepotView(APIView):
+    @extend_schema(
+        tags=['Opérations'],
+        summary='Effectuer un dépôt',
+        description='Le montant doit être strictement positif (RG1).',
+        request=DepotRetraitSerializer,
+        responses={
+            201: OpenApiResponse(SoldeSerializer, description='Dépôt enregistré, nouveau solde retourné.'),
+            400: OpenApiResponse(ErreurSerializer, description='Montant invalide (RG1).'),
+            401: R401, 403: R403, 404: R404,
+        },
+    )
     def post(self, request, pk):
         tirelire = get_tirelire_for_client(request.user.client, pk)
         serializer = DepotRetraitSerializer(data=request.data)
@@ -84,6 +138,17 @@ class DepotView(APIView):
 
 
 class RetraitView(APIView):
+    @extend_schema(
+        tags=['Opérations'],
+        summary='Effectuer un retrait',
+        description="Vérifié dans l'ordre : montant strictement positif (RG1), solde suffisant (RG2), objectif atteint ou échéance dépassée (RG3).",
+        request=DepotRetraitSerializer,
+        responses={
+            201: OpenApiResponse(SoldeSerializer, description='Retrait enregistré, nouveau solde retourné.'),
+            400: OpenApiResponse(ErreurSerializer, description='Montant invalide (RG1), solde insuffisant (RG2) ou retrait non autorisé (RG3).'),
+            401: R401, 403: R403, 404: R404,
+        },
+    )
     def post(self, request, pk):
         tirelire = get_tirelire_for_client(request.user.client, pk)
         serializer = DepotRetraitSerializer(data=request.data)
@@ -94,6 +159,11 @@ class RetraitView(APIView):
 
 
 class OperationListView(APIView):
+    @extend_schema(
+        tags=['Opérations'],
+        summary="Historique des opérations d'une tirelire",
+        responses={200: OperationSerializer(many=True), 401: R401, 403: R403, 404: R404},
+    )
     def get(self, request, pk):
         tirelire = get_tirelire_for_client(request.user.client, pk)
         operations = tirelire.operations.all()
