@@ -50,6 +50,7 @@ python manage.py runserver
 Une fois le serveur lancé, la documentation complète est disponible sur :
 
 - Swagger UI (interactif, permet de tester les routes) : http://127.0.0.1:8000/api/docs/
+
 - Schéma OpenAPI brut : http://127.0.0.1:8000/api/schema/
 
 Pour tester les routes protégées dans Swagger : exécuter `POST /api/auth/login/`, copier le token retourné, cliquer sur **Authorize** et saisir `Token <votre_token>`.
