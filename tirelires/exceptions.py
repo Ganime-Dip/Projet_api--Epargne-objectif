@@ -12,6 +12,3 @@ class DonneesCreationInvalides(Exception):
 
 class TirelireIntrouvable(Exception):
     pass
-
-class AccesRefuse(Exception):
-    pass

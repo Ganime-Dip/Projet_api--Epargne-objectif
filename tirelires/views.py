@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.views import APIView
 
-from .exceptions import AccesRefuse, DonneesCreationInvalides, TirelireIntrouvable
+from .exceptions import DonneesCreationInvalides, TirelireIntrouvable
 from .models import Tirelire
 from .serializers import (
     DepotRetraitSerializer,
@@ -22,21 +22,18 @@ from .serializers import (
 )
 
 R401 = OpenApiResponse(DetailSerializer, description="Token absent ou invalide.")
-R403 = OpenApiResponse(ErreurSerializer, description="La tirelire appartient à un autre client (RG4).")
-R404 = OpenApiResponse(ErreurSerializer, description="Tirelire introuvable.")
+R403 = OpenApiResponse(DetailSerializer, description="Compte sans profil client (ex. administrateur).")
+R404 = OpenApiResponse(ErreurSerializer, description="Tirelire introuvable (inexistante ou n'appartenant pas au client).")
 
 
 def get_tirelire_for_client(client, pk):
-    """Récupère une tirelire en vérifiant qu'elle appartient au client (RG4).
-    Correspond à la séquence 2.5 de la conception détaillée, appelée
-    depuis chaque vue qui manipule une tirelire par identifiant."""
+    """Recherche la tirelire parmi celles du client connecté (RG4).
+    Une tirelire inexistante ou appartenant à un autre client donne la même
+    réponse (404), pour ne jamais révéler son existence."""
     try:
-        tirelire = Tirelire.objects.get(pk=pk)
+        return client.tirelires.get(pk=pk)
     except Tirelire.DoesNotExist:
         raise TirelireIntrouvable
-    if tirelire.client != client:
-        raise AccesRefuse
-    return tirelire
 
 class LoginView(ObtainAuthToken):
     @extend_schema(
@@ -66,7 +63,7 @@ class TirelireListCreateView(APIView):
         tags=['Tirelires'],
         summary='Lister mes tirelires',
         description='Retourne uniquement les tirelires du client connecté (RG4).',
-        responses={200: TirelireSerializer(many=True), 401: R401},
+        responses={200: TirelireSerializer(many=True), 401: R401, 403: R403},
     )
     def get(self, request):
         tirelires = request.user.client.tirelires.all()
@@ -82,6 +79,7 @@ class TirelireListCreateView(APIView):
             201: OpenApiResponse(TirelireSerializer, description='Tirelire créée.'),
             400: OpenApiResponse(ErreurSerializer, description="Montant objectif ≤ 0 (RG5) ou date d'échéance non future (RG6)."),
             401: R401,
+            403: R403,
         },
     )
     def post(self, request):

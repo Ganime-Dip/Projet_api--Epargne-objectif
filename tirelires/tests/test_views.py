@@ -64,13 +64,13 @@ class APIIntegrationTests(APITestCase):
         self.auth(self.token_b)
         url = f'/api/tirelires/{self.tirelire_a.id}/'
         response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_deposer_sur_tirelire_autre_client_refuse(self):
         self.auth(self.token_b)
         url = f'/api/tirelires/{self.tirelire_a.id}/depot/'
         response = self.client.post(url, {'montant': '1000'}, format='json')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     # 5. Déposer sur une tirelire inexistante
 
@@ -160,4 +160,13 @@ class APIIntegrationTests(APITestCase):
     def test_historique_operations_autre_client_refuse(self):
         self.auth(self.token_b)
         response = self.client.get(f'/api/tirelires/{self.tirelire_a.id}/operations/')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_compte_sans_profil_client_recoit_403_et_non_500(self):
+        admin = User.objects.create_superuser(username='root', password='pass1234')
+        self.auth(Token.objects.create(user=admin))
+        for response in (
+            self.client.get('/api/tirelires/'),
+            self.client.post('/api/tirelires/', {}, format='json'),
+        ):
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
