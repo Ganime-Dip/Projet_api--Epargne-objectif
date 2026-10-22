@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -8,6 +9,7 @@ from .exceptions import MontantInvalide, RetraitNonAutorise, SoldeInsuffisant
 
 
 class Client(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     date_inscription = models.DateField(auto_now_add=True)
     telephone = models.CharField(max_length=20)
@@ -17,6 +19,7 @@ class Client(models.Model):
         return self.user.username
     
 class Tirelire(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='tirelires')
     libelle = models.CharField(max_length=100)
     montant_objectif = models.DecimalField(max_digits=12, decimal_places=2)
@@ -56,6 +59,7 @@ class Tirelire(models.Model):
             self.operations.create(montant=montant, type_operation=Operation.RETRAIT)
     
 class Operation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     DEPOT = 'depot'
     RETRAIT = 'retrait'
     TYPE_CHOICES = ((DEPOT, 'Dépôt'), (RETRAIT, 'Retrait'))

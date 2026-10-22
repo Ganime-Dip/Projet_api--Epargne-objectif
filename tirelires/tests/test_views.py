@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
@@ -76,7 +77,8 @@ class APIIntegrationTests(APITestCase):
 
     def test_depot_tirelire_inexistante_refuse(self):
         self.auth(self.token_a)
-        response = self.client.post('/api/tirelires/99999/depot/', {'montant': '1000'}, format='json')
+        url = f'/api/tirelires/{uuid.uuid4()}/depot/'
+        response = self.client.post(url, {'montant': '1000'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     # Bonus : cas nominal complet, pour vérifier que le chemin heureux marche aussi
@@ -170,3 +172,13 @@ class APIIntegrationTests(APITestCase):
             self.client.post('/api/tirelires/', {}, format='json'),
         ):
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+            
+    def test_identifiant_tirelire_est_un_uuid(self):
+        self.auth(self.token_a)
+        response = self.client.get(f'/api/tirelires/{self.tirelire_a.id}/')
+        uuid.UUID(response.data['id'])  # lève une erreur si ce n'est pas un UUID
+
+    def test_identifiant_entier_refuse(self):
+        self.auth(self.token_a)
+        response = self.client.get('/api/tirelires/1/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
