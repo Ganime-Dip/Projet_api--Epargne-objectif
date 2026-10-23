@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import Operation, Tirelire
 
@@ -35,8 +36,24 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(style={'input_type': 'password'})
     
 
-class TokenSerializer(serializers.Serializer):
-    token = serializers.CharField()
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Ajoute l'identité et le rôle de l'utilisateur dans le token."""
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['username'] = user.username
+        token['role'] = 'administrateur' if user.is_staff or user.is_superuser else 'client'
+        return token
+
+
+class TokenPairSerializer(serializers.Serializer):
+    access = serializers.CharField()
+    refresh = serializers.CharField()
+
+
+class RefreshRequestSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
 
 
 class SoldeSerializer(serializers.Serializer):

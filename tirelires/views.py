@@ -1,27 +1,31 @@
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.authtoken.models import Token
-from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.status import HTTP_400_BAD_REQUEST
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .exceptions import DonneesCreationInvalides, TirelireIntrouvable
 from .models import Tirelire
 from .serializers import (
+    CustomTokenObtainPairSerializer,
     DepotRetraitSerializer,
     DetailSerializer,
     ErreurSerializer,
     LoginSerializer,
     OperationSerializer,
+    RefreshRequestSerializer,
     SoldeSerializer,
     TirelireCreationSerializer,
     TirelireSerializer,
-    TokenSerializer,
+    TokenPairSerializer,
 )
 
-R401 = OpenApiResponse(DetailSerializer, description="Token absent ou invalide.")
+R401 = OpenApiResponse(DetailSerializer, description="Token absent, invalide ou expiré.")
 R403 = OpenApiResponse(DetailSerializer, description="Compte sans profil client (ex. administrateur).")
 R404 = OpenApiResponse(ErreurSerializer, description="Tirelire introuvable (inexistante ou n'appartenant pas au client).")
 
@@ -35,28 +39,79 @@ def get_tirelire_for_client(client, pk):
     except Tirelire.DoesNotExist:
         raise TirelireIntrouvable
 
-class LoginView(ObtainAuthToken):
+class LoginView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
     @extend_schema(
         tags=['Authentification'],
         summary='Connexion',
-        description="Vérifie les identifiants et retourne le token à utiliser dans l'en-tête `Authorization: Token <token>`.",
+        description=(
+            "Vérifie les identifiants et retourne un access token (15 min) et un refresh token (1 jour). "
+            "Une nouvelle paire est générée à chaque connexion. "
+            "Utiliser l'access token dans Authorize."
+        ),
         auth=[],
         request=LoginSerializer,
         responses={
-            200: OpenApiResponse(TokenSerializer, description='Connexion réussie.'),
+            200: OpenApiResponse(TokenPairSerializer, description='Connexion réussie.'),
             400: OpenApiResponse(ErreurSerializer, description='Identifiants invalides.'),
         },
     )
     def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data, context={'request': request})
-        if not serializer.is_valid():
-            return Response(
-                {'erreur': 'Identifiants invalides.'},
-                status=HTTP_400_BAD_REQUEST,
-            )
-        user = serializer.validated_data['user']
-        token, _ = Token.objects.get_or_create(user=user)
-        return Response({'token': token.key})
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except (AuthenticationFailed, TokenError):
+            return Response({'erreur': 'Identifiants invalides.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=['Authentification'],
+    summary='Renouveler la session',
+    description=(
+        "Échange un refresh token valide contre un nouvel access token et un nouveau refresh token. "
+        "L'ancien refresh token devient inutilisable."
+    ),
+    auth=[],
+    request=RefreshRequestSerializer,
+    responses={
+        200: OpenApiResponse(TokenPairSerializer, description='Nouvelle paire de tokens.'),
+        401: OpenApiResponse(DetailSerializer, description='Refresh token invalide, expiré ou déjà utilisé.'),
+    },
+)
+class RefreshView(TokenRefreshView):
+    pass
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=['Authentification'],
+        summary='Déconnexion',
+        description=(
+            "Invalide le refresh token fourni : il ne permettra plus de renouveler la session. "
+            "L'access token en cours reste valide jusqu'à son expiration (15 minutes maximum)."
+        ),
+        request=RefreshRequestSerializer,
+        responses={
+            204: OpenApiResponse(description='Déconnexion effectuée.'),
+            400: OpenApiResponse(ErreurSerializer, description='Refresh token invalide ou appartenant à un autre compte.'),
+            401: R401,
+        },
+    )
+    def post(self, request):
+        serializer = RefreshRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            token = RefreshToken(serializer.validated_data['refresh'])
+            if str(token['user_id']) != str(request.user.pk):
+                raise TokenError('Token appartenant à un autre compte')
+            token.blacklist()
+        except TokenError:
+            return Response({'erreur': 'Refresh token invalide.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
 class TirelireListCreateView(APIView):
     @extend_schema(

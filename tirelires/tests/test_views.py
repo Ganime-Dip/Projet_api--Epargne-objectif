@@ -5,11 +5,14 @@ from decimal import Decimal
 from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import AccessToken
 
 from tirelires.models import Client, Tirelire
 
+
+def access_for(user):
+    return str(AccessToken.for_user(user))
 
 class APIIntegrationTests(APITestCase):
     def setUp(self):
@@ -17,11 +20,11 @@ class APIIntegrationTests(APITestCase):
         self.client_a = Client.objects.create(
             user=user_a, telephone='70000000', numero_compte='CPT001'
         )
-        self.token_a = Token.objects.create(user=user_a)
+        self.token_a = access_for(user_a)
 
         user_b = User.objects.create_user(username='bob', password='pass1234')
         Client.objects.create(user=user_b, telephone='71111111', numero_compte='CPT002')
-        self.token_b = Token.objects.create(user=user_b)
+        self.token_b = access_for(user_b)
 
         self.tirelire_a = Tirelire.objects.create(
             client=self.client_a,
@@ -31,7 +34,7 @@ class APIIntegrationTests(APITestCase):
         )
 
     def auth(self, token):
-        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
     # 1. Dépôt d'un montant négatif ou nul
 
@@ -166,7 +169,7 @@ class APIIntegrationTests(APITestCase):
     
     def test_compte_sans_profil_client_recoit_403_et_non_500(self):
         admin = User.objects.create_superuser(username='root', password='pass1234')
-        self.auth(Token.objects.create(user=admin))
+        self.auth(access_for(admin))
         for response in (
             self.client.get('/api/tirelires/'),
             self.client.post('/api/tirelires/', {}, format='json'),
