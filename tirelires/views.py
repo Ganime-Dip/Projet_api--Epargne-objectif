@@ -162,6 +162,7 @@ class TirelireDetailView(APIView):
     @extend_schema(
         tags=['Tirelires'],
         summary="Consulter une tirelire",
+        description="Retourne le détail de la tirelire, avec sa progression : montant épargné, objectif, montant restant, pourcentage et état du blocage des retraits.",
         responses={200: TirelireSerializer, 401: R401, 403: R403, 404: R404},
     )
     def get(self, request, pk):

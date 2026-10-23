@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -21,6 +21,29 @@ class TirelireModelTests(TestCase):
             montant_objectif=Decimal(100000),
             date_echeance=timezone.now().date() + timedelta(days=30),
         )
+    
+    def test_progression_nulle_a_la_creation(self):
+        self.assertEqual(self.tirelire.progression_pourcentage(), Decimal(0))
+        self.assertEqual(self.tirelire.montant_restant(), Decimal(100000))
+
+    def test_progression_apres_depot_partiel(self):
+        self.tirelire.deposer(Decimal(25000))
+        self.assertEqual(self.tirelire.progression_pourcentage(), Decimal(25))
+        self.assertEqual(self.tirelire.montant_restant(), Decimal(75000))
+
+    def test_progression_plafonnee_a_100_pourcent(self):
+        self.tirelire.deposer(Decimal(150000))
+        self.assertEqual(self.tirelire.progression_pourcentage(), Decimal(100))
+        self.assertEqual(self.tirelire.montant_restant(), Decimal(0))
+
+    def test_retrait_autorise_une_fois_objectif_atteint(self):
+        self.assertFalse(self.tirelire.retrait_autorise())
+        self.tirelire.deposer(Decimal(100000))
+        self.assertTrue(self.tirelire.retrait_autorise())
+
+    def test_retrait_autorise_une_fois_echeance_depassee(self):
+        self.tirelire.date_echeance = date.today() - timedelta(days=1)
+        self.assertTrue(self.tirelire.retrait_autorise())
 
     # --- RG1 : montant strictement positif ---
 

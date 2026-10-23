@@ -4,12 +4,26 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Operation, Tirelire
 
 
+class ProgressionSerializer(serializers.Serializer):
+    montant_epargne = serializers.DecimalField(max_digits=12, decimal_places=2, source='solde')
+    montant_objectif = serializers.DecimalField(max_digits=12, decimal_places=2)
+    montant_restant = serializers.DecimalField(max_digits=12, decimal_places=2)
+    pourcentage = serializers.DecimalField(
+        max_digits=5, decimal_places=2, source='progression_pourcentage'
+    )
+    objectif_atteint = serializers.BooleanField()
+    echeance_depassee = serializers.BooleanField()
+    retrait_autorise = serializers.BooleanField()
+
+
 class TirelireSerializer(serializers.ModelSerializer):
+    progression = ProgressionSerializer(source='*', read_only=True)
+
     class Meta:
         model = Tirelire
         fields = (
             'id', 'libelle', 'montant_objectif', 'date_echeance',
-            'date_ouverture', 'solde',
+            'date_ouverture', 'solde', 'progression',
         )
         read_only_fields = ('id', 'date_ouverture', 'solde')
 

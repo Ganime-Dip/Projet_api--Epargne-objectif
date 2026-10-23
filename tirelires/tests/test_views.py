@@ -185,3 +185,14 @@ class APIIntegrationTests(APITestCase):
         self.auth(self.token_a)
         response = self.client.get('/api/tirelires/1/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        
+    def test_detail_tirelire_contient_la_progression(self):
+        self.auth(self.token_a)
+        self.tirelire_a.deposer(Decimal(50000))
+        response = self.client.get(f'/api/tirelires/{self.tirelire_a.id}/')
+        progression = response.data['progression']
+        self.assertEqual(progression['montant_epargne'], '50000.00')
+        self.assertEqual(progression['montant_objectif'], '100000.00')
+        self.assertEqual(progression['montant_restant'], '50000.00')
+        self.assertEqual(progression['pourcentage'], '50.00')
+        self.assertFalse(progression['retrait_autorise'])

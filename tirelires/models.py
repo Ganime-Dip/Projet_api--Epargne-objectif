@@ -36,6 +36,17 @@ class Tirelire(models.Model):
     def echeance_depassee(self) -> bool:
         return timezone.now().date() > self.date_echeance
     
+    def retrait_autorise(self) -> bool:
+        return self.objectif_atteint() or self.echeance_depassee()
+
+    def montant_restant(self) -> Decimal:
+        return max(self.montant_objectif - self.solde, Decimal(0))
+
+    def progression_pourcentage(self) -> Decimal:
+        if self.montant_objectif <= 0:
+            return Decimal(0)
+        return min(self.solde / self.montant_objectif * 100, Decimal(100))
+    
     def deposer(self, montant: Decimal) -> None:
         if montant <= 0:
             raise MontantInvalide("Le montant doit être strictement positif.")
@@ -50,8 +61,10 @@ class Tirelire(models.Model):
             raise MontantInvalide("Le montant doit être strictement positif.")
         if montant > self.solde:
             raise SoldeInsuffisant("Solde insuffisant pour ce retrait.")
-        if not (self.objectif_atteint() or self.echeance_depassee()):
-            raise RetraitNonAutorise("Retrait impossible : objectif non atteint et échéance non arrivée.")
+        if not self.retrait_autorise():
+            raise RetraitNonAutorise(
+                "Retrait impossible : objectif non atteint et échéance non arrivée."
+            )
         
         with transaction.atomic():
             self.solde -= montant
