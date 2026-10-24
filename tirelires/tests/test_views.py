@@ -140,7 +140,7 @@ class APIIntegrationTests(APITestCase):
         self.auth(self.token_b)
         response = self.client.get('/api/tirelires/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 0)  # bob n'a aucune tirelire
+        self.assertEqual(response.data['count'], 0)
 
     # UC4 : consultation du détail d'une tirelire à soi
 
@@ -159,8 +159,8 @@ class APIIntegrationTests(APITestCase):
         )
         response = self.client.get(f'/api/tirelires/{self.tirelire_a.id}/operations/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]['type_operation'], 'depot')
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['type_operation'], 'depot')
 
     def test_historique_operations_autre_client_refuse(self):
         self.auth(self.token_b)

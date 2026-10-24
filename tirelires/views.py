@@ -1,6 +1,7 @@
 from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -10,7 +11,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .exceptions import DonneesCreationInvalides, TirelireIntrouvable
-from .models import Tirelire
+from .filters import OperationFilter, RechercheFilter, TirelireFilter, TriFilter
+from .models import Operation, Tirelire
 from .serializers import (
     CustomTokenObtainPairSerializer,
     DepotRetraitSerializer,
@@ -113,17 +115,40 @@ class LogoutView(APIView):
             return Response({'erreur': 'Refresh token invalide.'}, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
     
-class TirelireListCreateView(APIView):
+class StableOrderingMixin:
+    """Ajoute l'id comme dernier critère de tri : sans cela, la pagination peut
+    répéter ou sauter des éléments quand plusieurs lignes ont la même valeur de tri."""
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        return queryset.order_by(*queryset.query.order_by, 'id')
+
+class TirelireListCreateView(StableOrderingMixin, generics.ListCreateAPIView):
+    serializer_class = TirelireSerializer
+    filter_backends = [DjangoFilterBackend, RechercheFilter, TriFilter]
+    filterset_class = TirelireFilter
+    search_fields = ['libelle']
+    ordering_fields = [
+        'libelle', 'date_echeance', 'date_ouverture', 'solde', 'montant_objectif',
+    ]
+    ordering = ['-date_ouverture']
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Tirelire.objects.none()
+        return self.request.user.client.tirelires.all()
+
     @extend_schema(
         tags=['Tirelires'],
         summary='Lister mes tirelires',
-        description='Retourne uniquement les tirelires du client connecté (RG4).',
+        description=(
+            "Liste paginée des tirelires du client connecté (RG4). "
+            "Recherche par libellé (`search`), filtres et tri (`ordering`, préfixe `-` pour décroissant)."
+        ),
         responses={200: TirelireSerializer(many=True), 401: R401, 403: R403},
     )
-    def get(self, request):
-        tirelires = request.user.client.tirelires.all()
-        serializer = TirelireSerializer(tirelires, many=True)
-        return Response(serializer.data)
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
     @extend_schema(
         tags=['Tirelires'],
@@ -212,14 +237,24 @@ class RetraitView(APIView):
         return Response({'solde': tirelire.solde}, status=status.HTTP_201_CREATED)
 
 
-class OperationListView(APIView):
+class OperationListView(StableOrderingMixin, generics.ListAPIView):
+    serializer_class = OperationSerializer
+    filter_backends = [DjangoFilterBackend, TriFilter]
+    filterset_class = OperationFilter
+    ordering_fields = ['date_operation', 'montant']
+    ordering = ['-date_operation']
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Operation.objects.none()
+        tirelire = get_tirelire_for_client(self.request.user.client, self.kwargs['pk'])
+        return tirelire.operations.all()
+
     @extend_schema(
         tags=['Opérations'],
         summary="Historique des opérations d'une tirelire",
+        description="Liste paginée, de la plus récente à la plus ancienne par défaut, avec filtres et tri.",
         responses={200: OperationSerializer(many=True), 401: R401, 403: R403, 404: R404},
     )
-    def get(self, request, pk):
-        tirelire = get_tirelire_for_client(request.user.client, pk)
-        operations = tirelire.operations.all()
-        serializer = OperationSerializer(operations, many=True)
-        return Response(serializer.data)
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)

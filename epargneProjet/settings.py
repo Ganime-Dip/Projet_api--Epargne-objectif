@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'django_filters',
     'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',
     'tirelires',
@@ -136,6 +137,7 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'EXCEPTION_HANDLER': 'tirelires.exception_handlers.custom_exception_handler',
+    'DEFAULT_PAGINATION_CLASS': 'tirelires.pagination.StandardPagination',
 }
 
 SPECTACULAR_SETTINGS = {
