@@ -10,10 +10,23 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .exceptions import DonneesCreationInvalides, TirelireIntrouvable
-from .filters import OperationFilter, RechercheFilter, TirelireFilter, TriFilter
-from .models import Operation, Tirelire
+from tirelires.permissions import IsAdministrateur
+
+from .exceptions import ClientIntrouvable, DonneesCreationInvalides, TirelireIntrouvable
+from .filters import (
+    AdminTirelireFilter,
+    ClientFilter,
+    OperationFilter,
+    RechercheFilter,
+    TirelireFilter,
+    TriFilter,
+)
+from .models import Client, Operation, Tirelire
 from .serializers import (
+    AdminTirelireSerializer,
+    ClientActivationSerializer,
+    ClientCreationSerializer,
+    ClientSerializer,
     CustomTokenObtainPairSerializer,
     DepotRetraitSerializer,
     DetailSerializer,
@@ -30,6 +43,7 @@ from .serializers import (
 R401 = OpenApiResponse(DetailSerializer, description="Token absent, invalide ou expiré.")
 R403 = OpenApiResponse(DetailSerializer, description="Compte sans profil client (ex. administrateur).")
 R404 = OpenApiResponse(ErreurSerializer, description="Tirelire introuvable (inexistante ou n'appartenant pas au client).")
+R403_ADMIN = OpenApiResponse(DetailSerializer, description="Réservé aux administrateurs.")
 
 
 def get_tirelire_for_client(client, pk):
@@ -255,6 +269,115 @@ class OperationListView(StableOrderingMixin, generics.ListAPIView):
         summary="Historique des opérations d'une tirelire",
         description="Liste paginée, de la plus récente à la plus ancienne par défaut, avec filtres et tri.",
         responses={200: OperationSerializer(many=True), 401: R401, 403: R403, 404: R404},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+class AdminClientListCreateView(StableOrderingMixin, generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated, IsAdministrateur]
+    serializer_class = ClientSerializer
+    queryset = Client.objects.select_related('user')
+    filter_backends = [DjangoFilterBackend, RechercheFilter, TriFilter]
+    filterset_class = ClientFilter
+    search_fields = ['user__username', 'user__email', 'telephone', 'numero_compte']
+    ordering_fields = ['date_inscription', 'numero_compte']
+    ordering = ['-date_inscription']
+
+    @extend_schema(
+        tags=['Administration'],
+        summary='Lister les clients',
+        responses={200: ClientSerializer(many=True), 401: R401, 403: R403_ADMIN},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['Administration'],
+        summary='Créer un compte client',
+        description=(
+            "Crée un compte utilisateur et son profil client. Le mot de passe doit respecter "
+            "les règles de validation de Django. Les comptes créés ne sont jamais administrateurs."
+        ),
+        request=ClientCreationSerializer,
+        responses={
+            201: ClientSerializer,
+            400: OpenApiResponse(description="Données invalides (nom d'utilisateur ou numéro de compte déjà pris, mot de passe trop faible…)."),
+            401: R401,
+            403: R403_ADMIN,
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = ClientCreationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        client = serializer.save()
+        return Response(ClientSerializer(client).data, status=status.HTTP_201_CREATED)
+
+
+class AdminClientDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAuthenticated, IsAdministrateur]
+    serializer_class = ClientSerializer
+    queryset = Client.objects.select_related('user')
+
+    def get_object(self):
+        try:
+            return self.get_queryset().get(pk=self.kwargs['pk'])
+        except Client.DoesNotExist:
+            raise ClientIntrouvable
+
+    @extend_schema(
+        tags=['Administration'],
+        summary='Consulter un client',
+        responses={
+            200: ClientSerializer,
+            401: R401,
+            403: R403_ADMIN,
+            404: OpenApiResponse(ErreurSerializer, description="Client introuvable."),
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=['Administration'],
+        summary='Activer ou désactiver un client',
+        description=(
+            "Un compte désactivé ne peut plus se connecter, et ses tokens en cours "
+            "sont refusés immédiatement."
+        ),
+        request=ClientActivationSerializer,
+        responses={
+            200: ClientSerializer,
+            401: R401,
+            403: R403_ADMIN,
+            404: OpenApiResponse(ErreurSerializer, description="Client introuvable."),
+        },
+    )
+    def patch(self, request, *args, **kwargs):
+        client = self.get_object()
+        serializer = ClientActivationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        client.user.is_active = serializer.validated_data['actif']
+        client.user.save(update_fields=['is_active'])
+        return Response(ClientSerializer(client).data)
+
+
+class AdminTirelireListView(StableOrderingMixin, generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsAdministrateur]
+    serializer_class = AdminTirelireSerializer
+    queryset = Tirelire.objects.select_related('client__user')
+    filter_backends = [DjangoFilterBackend, RechercheFilter, TriFilter]
+    filterset_class = AdminTirelireFilter
+    search_fields = ['libelle', 'client__user__username', 'client__numero_compte']
+    ordering_fields = [
+        'libelle', 'date_echeance', 'date_ouverture', 'solde', 'montant_objectif',
+    ]
+    ordering = ['-date_ouverture']
+
+    @extend_schema(
+        tags=['Administration'],
+        summary='Lister toutes les tirelires (lecture seule)',
+        description="Toutes les tirelires du système, avec leur propriétaire. Aucune opération n'est possible depuis cette route.",
+        responses={200: AdminTirelireSerializer(many=True), 401: R401, 403: R403_ADMIN},
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)

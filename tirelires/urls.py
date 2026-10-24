@@ -1,6 +1,9 @@
 from django.urls import path
 
 from .views import (
+    AdminClientDetailView,
+    AdminClientListCreateView,
+    AdminTirelireListView,
     DepotView,
     LoginView,
     LogoutView,
@@ -20,4 +23,7 @@ urlpatterns = [
     path('tirelires/<uuid:pk>/depot/', DepotView.as_view(), name='tirelire-depot'),
     path('tirelires/<uuid:pk>/retrait/', RetraitView.as_view(), name='tirelire-retrait'),
     path('tirelires/<uuid:pk>/operations/', OperationListView.as_view(), name='tirelire-operations'),
+    path('admin/clients/', AdminClientListCreateView.as_view(), name='admin-clients'),
+    path('admin/clients/<uuid:pk>/', AdminClientDetailView.as_view(), name='admin-client-detail'),
+    path('admin/tirelires/', AdminTirelireListView.as_view(), name='admin-tirelires'),
 ]

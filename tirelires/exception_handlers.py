@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
 from .exceptions import (
+    ClientIntrouvable,
     DonneesCreationInvalides,
     MontantInvalide,
     RetraitNonAutorise,
@@ -17,6 +18,7 @@ EXCEPTION_MAP = (
     (RetraitNonAutorise, status.HTTP_400_BAD_REQUEST, None),
     (DonneesCreationInvalides, status.HTTP_400_BAD_REQUEST, None),
     (TirelireIntrouvable, status.HTTP_404_NOT_FOUND, "Tirelire introuvable."),
+    (ClientIntrouvable, status.HTTP_404_NOT_FOUND, "Client introuvable."),
 )
 
 def custom_exception_handler(exc, context):

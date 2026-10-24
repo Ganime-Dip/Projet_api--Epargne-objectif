@@ -3,7 +3,7 @@ from django.utils import timezone
 from django_filters import rest_framework as filters
 from rest_framework.filters import OrderingFilter, SearchFilter
 
-from .models import Operation, Tirelire
+from .models import Client, Operation, Tirelire
 
 
 class TirelireFilter(filters.FilterSet):
@@ -96,4 +96,26 @@ class TriFilter(OrderingFilter):
 
 
 class RechercheFilter(SearchFilter):
-    search_description = "Recherche dans le libellé de la tirelire."
+    def get_schema_operation_parameters(self, view):
+        parametres = super().get_schema_operation_parameters(view)
+        champs = ', '.join(champ.lstrip('^=@$') for champ in view.search_fields)
+        for parametre in parametres:
+            parametre['description'] = f"Terme recherché dans : {champs}."
+        return parametres
+    
+class ClientFilter(filters.FilterSet):
+    actif = filters.BooleanFilter(
+        field_name='user__is_active',
+        help_text="true : comptes actifs ; false : comptes désactivés.",
+    )
+
+    class Meta:
+        model = Client
+        fields = []
+
+
+class AdminTirelireFilter(TirelireFilter):
+    client = filters.UUIDFilter(
+        field_name='client__id',
+        help_text="Identifiant (UUID) du client propriétaire.",
+    )
