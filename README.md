@@ -1,17 +1,19 @@
-# API REST — Épargne à objectif
+# API REST : Épargne à objectif
 
-API de gestion de tirelires d'épargne pour LICELI Technologies. Un client authentifié
-crée des tirelires liées à un objectif d'épargne, y effectue des dépôts et des retraits,
-et consulte l'historique de ses opérations.
+API de gestion de tirelires d'épargne pour LICELI Technologies. Un client authentifié crée des
+tirelires liées à un objectif d'épargne, y effectue des dépôts et des retraits (soumis aux règles
+de gestion) et consulte l'historique de ses opérations. Un administrateur gère les comptes clients.
+
+La documentation complète et testable de l'API est disponible sur `/api/docs/` une fois le
+serveur lancé.
 
 ## Prérequis
-- Python 3.13
-- pip
 
-Vérifier votre version installée :
-```bash
-python --version
-```
+- Python 3.13 ([télécharger ici](https://www.python.org/downloads/) si non installé ; cocher
+  **"Add python.exe to PATH"** pendant l'installation sur Windows)
+- pip (inclus avec Python)
+
+Vérifier votre version : `python --version`
 
 ## Installation
 
@@ -21,24 +23,16 @@ cd Projet_api--Epargne-objectif
 python -m venv venv
 venv\Scripts\activate        # Windows
 # source venv/bin/activate   # Linux/Mac
-python -m pip install --upgrade pip
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py createsuperuser
 ```
 
-## Créer des comptes de test
+`createsuperuser` crée le premier **administrateur** (voir « Rôles » ci-dessous).
 
-Un script est fourni pour créer deux comptes client de démonstration (`alice` et `bob`,
-utilisés dans tous les exemples ci-dessous) :
-
-```bash
-python manage.py shell < seed_demo.py
-```
-
-Ça crée :
-- `alice` / `motdepasse` (mot de passe : `motdepasse`)
-- `bob` / `motdepasse` (utilisé pour illustrer le refus d'accès entre clients, RG4)
+> **Mise à jour depuis une version précédente** : le schéma de la base a changé (identifiants
+> UUID, numéro de compte unique). Supprimer le fichier `db.sqlite3`, puis relancer
+> `python manage.py migrate` et `python manage.py createsuperuser`.
 
 ## Démarrage
 
@@ -46,248 +40,168 @@ python manage.py shell < seed_demo.py
 python manage.py runserver
 ```
 
-## Documentation interactive de l'API
+| Adresse | Contenu |
+|---|---|
+| http://127.0.0.1:8000/api/docs/ | Documentation interactive (Swagger UI) : toutes les routes, testables |
+| http://127.0.0.1:8000/api/schema/ | Schéma OpenAPI brut |
+| http://127.0.0.1:8000/admin/ | Site d'administration Django |
 
-Une fois le serveur lancé, la documentation complète est disponible sur :
+## Rôles
 
-- Swagger UI (interactif, permet de tester les routes) : http://127.0.0.1:8000/api/docs/
+Administrateur : Super-utilisateur (`createsuperuser`), sans profil client
+                 Crée et désactive des comptes clients
+                 Consulte toutes les tirelires, en lecture seule
+                 Routes `/api/admin/...`
 
-- Schéma OpenAPI brut : http://127.0.0.1:8000/api/schema/
+Client :  Utilisateur avec un profil client
+          Gère ses propres tirelires (création, dépôt, retrait, historique)
+          Routes `/api/tirelires/...`
 
-Pour tester les routes protégées dans Swagger : exécuter `POST /api/auth/login/`, copier le token retourné, cliquer sur **Authorize** et saisir `Token <votre_token>`.
 
+Un administrateur ne peut jamais déposer ou retirer à la place d'un client. Les administrateurs ne
+se créent pas par l'API, uniquement avec `createsuperuser`.
 
+## Premiers pas dans Swagger
 
-## Lancer les tests (sur le terminal)
+1. Ouvrir `/api/docs/`. Dans `POST /api/auth/login/`, se connecter avec le compte administrateur
+   créé à l'installation. Copier l'`access` retourné.
+2. Cliquer sur **Authorize**, coller **uniquement l'access token**, valider.
+3. Dans le groupe **Administration**, `POST /api/admin/clients/` : créer un compte client
+   (le mot de passe doit respecter les règles de validation de Django : 8 caractères minimum,
+   pas trop courant, pas entièrement numérique).
+4. Se connecter avec ce compte client (login, puis **Authorize** avec son nouvel access token).
+5. Créer une tirelire (`POST /api/tirelires/`), y déposer (`.../depot/`), tenter un retrait
+   (`.../retrait/`), consulter l'historique (`.../operations/`).
+
+**Raccourci de démonstration (facultatif)** : `python manage.py shell < seed_demo.py` crée deux
+comptes clients, `alice` et `bob`, tous deux avec le mot de passe `motdepasse`.
+
+## Authentification
+
+L'API utilise des jetons JWT, au format standard `Authorization: Bearer <access>`.
+
+- **Connexion** (`POST /api/auth/login/`) : retourne un `access` (valable **15 minutes**) et un
+  `refresh` (valable **1 jour**). Chaque connexion génère une nouvelle paire.
+- **Renouvellement** (`POST /api/auth/refresh/` avec le `refresh`) : retourne un nouvel `access` et
+  un nouveau `refresh`. L'ancien `refresh` devient inutilisable.
+- **Déconnexion** (`POST /api/auth/logout/` avec le `refresh`, `access` dans l'en-tête) : invalide
+  le `refresh`. L'`access` déjà émis reste valable jusqu'à son expiration (15 minutes maximum).
+
+Quand l'`access` expire, les routes répondent `401` : utiliser le renouvellement, ou se reconnecter.
+
+## Routes
+
+| Méthode | URL | Rôle | Description |
+|---|---|---|---|
+| POST | `/api/auth/login/` | public | Connexion |
+| POST | `/api/auth/refresh/` | public (avec refresh token) | Renouveler la session |
+| POST | `/api/auth/logout/` | connecté | Déconnexion |
+| GET, POST | `/api/tirelires/` | client | Lister (paginé, filtrable) / créer ses tirelires |
+| GET | `/api/tirelires/{id}/` | client | Détail, avec la progression |
+| POST | `/api/tirelires/{id}/depot/` | client | Effectuer un dépôt |
+| POST | `/api/tirelires/{id}/retrait/` | client | Effectuer un retrait |
+| GET | `/api/tirelires/{id}/operations/` | client | Historique (paginé, filtrable) |
+| GET, POST | `/api/admin/clients/` | administrateur | Lister / créer des comptes clients |
+| GET, PATCH | `/api/admin/clients/{id}/` | administrateur | Consulter / activer-désactiver un client |
+| GET | `/api/admin/tirelires/` | administrateur | Toutes les tirelires (lecture seule) |
+
+Les identifiants (`{id}`) sont des UUID.
+
+## Pagination, recherche et filtres
+
+Les listes retournent `{"count": ..., "next": ..., "previous": ..., "results": [...]}`.
+
+| Paramètre | Routes | Rôle |
+|---|---|---|
+| `page`, `page_size` | toutes les listes | Page (10 éléments par défaut, 100 maximum) |
+| `search` | tirelires, clients | Recherche textuelle |
+| `ordering` | toutes les listes | Tri (préfixe `-` pour décroissant) |
+| `montant_objectif_min`, `montant_objectif_max` | tirelires | Plage de montant objectif |
+| `echeance_apres`, `echeance_avant` | tirelires | Plage d'échéance (AAAA-MM-JJ) |
+| `objectif_atteint`, `echeance_depassee`, `retrait_autorise` | tirelires | `true` ou `false` |
+| `type_operation`, `date_apres`, `date_avant`, `montant_min`, `montant_max` | opérations | Filtres de l'historique |
+| `client` | admin/tirelires | Identifiant du client |
+| `actif` | admin/clients | `true` ou `false` |
+
+Le détail de chaque paramètre est dans Swagger.
+
+## Exemples avec curl
+
+Syntaxe pour `cmd` Windows (sous Linux/Mac, utiliser des apostrophes autour du JSON).
+Remplacer `<access>` par l'access token et `<id>` par l'identifiant d'une tirelire.
+
+**Connexion**
+```bash
+curl -X POST http://127.0.0.1:8000/api/auth/login/ -H "Content-Type: application/json" -d "{\"username\": \"alice\", \"password\": \"motdepasse\"}"
+```
+Succès (200) : `{"refresh": "eyJ...", "access": "eyJ..."}`
+Mauvais mot de passe (400) : `{"erreur": "Identifiants invalides."}`
+
+**Créer une tirelire**
+```bash
+curl -X POST http://127.0.0.1:8000/api/tirelires/ -H "Authorization: Bearer <access>" -H "Content-Type: application/json" -d "{\"libelle\": \"Voyage\", \"montant_objectif\": 100000, \"date_echeance\": \"2027-01-01\"}"
+```
+Succès (201) : la tirelire, avec son `id` (UUID) et son bloc `progression`.
+Montant objectif négatif (400) : `{"erreur": "Le montant objectif doit être positif."}`
+
+**Effectuer un dépôt**
+```bash
+curl -X POST http://127.0.0.1:8000/api/tirelires/<id>/depot/ -H "Authorization: Bearer <access>" -H "Content-Type: application/json" -d "{\"montant\": 10000}"
+```
+Succès (201) : `{"solde": "10000.00"}`
+Montant négatif ou nul (400) : `{"erreur": "Le montant doit être strictement positif."}`
+
+**Effectuer un retrait**
+```bash
+curl -X POST http://127.0.0.1:8000/api/tirelires/<id>/retrait/ -H "Authorization: Bearer <access>" -H "Content-Type: application/json" -d "{\"montant\": 5000}"
+```
+Succès (201) : `{"solde": "5000.00"}` (si l'objectif est atteint ou l'échéance dépassée)
+Objectif non atteint et échéance non arrivée (400) : `{"erreur": "Retrait impossible : objectif non atteint et échéance non arrivée."}`
+Solde insuffisant (400) : `{"erreur": "Solde insuffisant pour ce retrait."}`
+
+**Tirelire d'un autre client, ou inexistante**
+```bash
+curl http://127.0.0.1:8000/api/tirelires/<id>/ -H "Authorization: Bearer <access>"
+```
+Dans les deux cas (404) : `{"erreur": "Tirelire introuvable."}`. Les deux situations sont
+volontairement indiscernables, pour ne pas révéler l'existence des tirelires d'autrui.
+
+**Lister avec filtres et pagination**
+```bash
+curl "http://127.0.0.1:8000/api/tirelires/?search=voyage&retrait_autorise=false&ordering=-solde&page_size=5" -H "Authorization: Bearer <access>"
+```
+
+**Renouveler la session, puis se déconnecter**
+```bash
+curl -X POST http://127.0.0.1:8000/api/auth/refresh/ -H "Content-Type: application/json" -d "{\"refresh\": \"<refresh>\"}"
+curl -X POST http://127.0.0.1:8000/api/auth/logout/ -H "Authorization: Bearer <access>" -H "Content-Type: application/json" -d "{\"refresh\": \"<refresh>\"}"
+```
+Renouvellement (200) : nouvelle paire `access` / `refresh`. Déconnexion (204) : pas de contenu.
+
+## Codes de réponse
+
+**Succès**
+
+| Code | Cas |
+|---|---|
+| 200 | Lecture, connexion, renouvellement, activation/désactivation d'un client |
+| 201 | Création (tirelire, compte client), dépôt, retrait |
+| 204 | Déconnexion |
+
+**Erreurs**
+
+| Code | Cas |
+|---|---|
+| 400 | Données invalides, règle de gestion non respectée (RG1 à RG3, RG5, RG6), identifiants invalides |
+| 401 | Token absent, invalide ou expiré |
+| 403 | Mauvais rôle : compte non client sur `/api/tirelires/...`, non administrateur sur `/api/admin/...` |
+| 404 | Tirelire introuvable (inexistante ou appartenant à un autre client), client introuvable |
+
+## Tests
 
 ```bash
 python manage.py test tirelires --verbosity 2
 ```
 
-Affiche chaque test exécuté avec son résultat (25 tests, couvrant RG1 à RG6 et les 7 cas
-d'utilisation).
-
-## Authentification
-
-Toutes les routes, sauf la connexion, exigent un token dans l'en-tête :
-
-```
-Authorization: Token <votre_token>
-```
-
-## Points d'entrée de l'API
-
-### Connexion
-
-**Cas réussi**
-```bash
-curl -X POST http://127.0.0.1:8000/api/auth/login/ -H "Content-Type: application/json" -d "{\"username\": \"alice\", \"password\": \"motdepasse\"}"
-```
-Réponse attendue (200) :
-```json
-{"token": "cae129d8c0a8b3cd7aae37739fd6bd6b939fcf13"}
-```
-
-**Cas refusé — mauvais mot de passe**
-```bash
-curl -X POST http://127.0.0.1:8000/api/auth/login/ -H "Content-Type: application/json" -d "{\"username\": \"alice\", \"password\": \"faux\"}"
-```
-Réponse attendue (400) :
-```json
-{"erreur": "Identifiants invalides."}
-```
-
----
-
-### Créer une tirelire
-
-Récupère d'abord un token via la connexion, puis remplace `<token>` dans les exemples suivants.
-
-
-**Cas réussi**
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"libelle\": \"Voyage\", \"montant_objectif\": 500000, \"date_echeance\": \"2027-01-01\"}"
-```
-Réponse attendue (201) :
-```json
-{"id": 1, "libelle": "Voyage", "montant_objectif": "500000.00", "date_echeance": "2027-01-01", "date_ouverture": "2026-09-24", "solde": "0.00"}
-```
-
-**Cas refusé — montant objectif négatif (RG5)**
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"libelle\": \"Test\", \"montant_objectif\": -100, \"date_echeance\": \"2027-01-01\"}"
-```
-Réponse attendue (400) :
-```json
-{"erreur": "Le montant objectif doit etre positif."}
-```
-
-**Cas refusé — montant objectif nul**
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"libelle\": \"Test\", \"montant_objectif\": 0, \"date_echeance\": \"2027-01-01\"}"
-```
-Réponse attendue (400) :
-```json
-{"erreur": "Le montant objectif doit etre positif."}
-```
-
-**Cas refusé — date dans le passé**
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"libelle\": \"Test\", \"montant_objectif\": 100, \"date_echeance\": \"2024-01-01\"}"
-```
-Réponse attendue (400) :
-```json
-{"erreur": "La date d'échéance doit être future."}
-```
-
----
-
-### Lister mes tirelires
-
-**Cas réussi**
-```bash
-curl http://127.0.0.1:8000/api/tirelires/ -H "Authorization: Token <token>"
-```
-Réponse attendue (200) : la liste des tirelires du client connecté (tableau JSON, vide si aucune).
-
-**Cas refusé — sans authentification**
-```bash
-curl http://127.0.0.1:8000/api/tirelires/
-```
-Réponse attendue (401) :
-```json
-{"detail": "Authentication credentials were not provided."}
-```
-
----
-
-### Consulter une tirelire précise
-
-**Cas réussi** (remplace `1` par l'id retourné à la création)
-```bash
-curl http://127.0.0.1:8000/api/tirelires/1/ -H "Authorization: Token <token>"
-```
-Réponse attendue (200) : le détail de la tirelire.
-
-**Cas refusé — tirelire inexistante**
-```bash
-curl http://127.0.0.1:8000/api/tirelires/99999/ -H "Authorization: Token <token>"
-```
-Réponse attendue (404) :
-```json
-{"erreur": "Tirelire introuvable."}
-```
-
-**Cas refusé — tirelire d'un autre client (RG4)** : connecte-toi avec `bob` pour obtenir un
-autre token, puis essaie d'accéder à une tirelire créée par `alice` :
-```bash
-curl http://127.0.0.1:8000/api/tirelires/1/ -H "Authorization: Token <token_de_bob>"
-```
-Réponse attendue (403) :
-```json
-{"erreur": "Tirelire introuvable."}
-```
-
----
-
-### Effectuer un dépôt
-
-**Cas réussi**
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/1/depot/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"montant\": 10000}"
-```
-Réponse attendue (201) :
-```json
-{"solde": "10000.00"}
-```
-
-**Cas refusé — montant négatif ou nul (RG1)**
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/1/depot/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"montant\": -100}"
-```
-Réponse attendue (400) :
-```json
-{"erreur": "Le montant doit etre strictement positif."}
-```
-
----
-
-### Effectuer un retrait
-
-**Cas réussi** (nécessite d'avoir d'abord déposé au moins le montant objectif, ou d'avoir
-dépassé la date d'échéance — RG3)
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/1/retrait/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"montant\": 5000}"
-```
-Réponse attendue (201) :
-```json
-{"solde": "5000.00"}
-```
-
-**Cas refusé — objectif non atteint et échéance non arrivée (RG3)**
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/1/retrait/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"montant\": 100}"
-```
-Réponse attendue (400) :
-```json
-{"erreur": "Retrait impossible : objectif non atteint et echeance non arrivee."}
-```
-
-**Cas refusé — solde insuffisant (RG2, après avoir débloqué la tirelire)**
-```bash
-curl -X POST http://127.0.0.1:8000/api/tirelires/1/retrait/ -H "Authorization: Token <token>" -H "Content-Type: application/json" -d "{\"montant\": 999999}"
-```
-Réponse attendue (400) :
-```json
-{"erreur": "Solde insuffisant pour ce retrait."}
-```
-
----
-
-### Consulter l'historique des opérations
-
-**Cas réussi**
-```bash
-curl http://127.0.0.1:8000/api/tirelires/1/operations/ -H "Authorization: Token <token>"
-```
-Réponse attendue (200) : la liste des dépôts/retraits enregistrés, du plus ancien au plus
-récent.
-
-**Cas refusé — tirelire d'un autre client**
-```bash
-curl http://127.0.0.1:8000/api/tirelires/1/operations/ -H "Authorization: Token <token_de_bob>"
-```
-Réponse attendue (403) :
-```json
-{"erreur": "Tirelire introuvable."}
-```
-
-## Résumé des routes
-
-| Méthode | URL | Auth requise |
-|---|---|---|
-| POST | /api/auth/login/ | Non |
-| GET, POST | /api/tirelires/ | Oui |
-| GET | /api/tirelires/{id}/ | Oui |
-| POST | /api/tirelires/{id}/depot/ | Oui |
-| POST | /api/tirelires/{id}/retrait/ | Oui |
-| GET | /api/tirelires/{id}/operations/ | Oui |
-
-## Codes de réponse
-
-
-### Succès
-
-| Code | Cas |
-|---|---|
-| 200 | Lecture réussie (connexion, liste des tirelires, détail d'une tirelire, historique des opérations) |
-| 201 | Création réussie (nouvelle tirelire, dépôt effectué, retrait effectué) |
-
-### Erreurs
-
-| Code | Cas |
-|---|---|
-| 400 | Données invalides (montant, dates, règles métier RG1-RG3, RG5-RG6) |
-| 401 | Absence ou invalidité du token |
-| 403 | Accès à une tirelire d'un autre client (RG4) |
-| 404 | Tirelire inexistante |
+Affiche chaque test avec son résultat (72 tests : règles de gestion, authentification, rôles,
+progression, pagination et filtres, documentation).
